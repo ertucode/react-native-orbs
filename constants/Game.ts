@@ -5,9 +5,13 @@ export const Game = {
     padding: 6,
     borderRadius: 10,
   },
-  ball: {
+  orb: {
     size: 30,
-    ballRatio: 5,
+    protonRatio: 5,
     ballGap: 3,
+  },
+  animation: {
+    proton: 300,
+    orb: 300,
   },
 } as const;
