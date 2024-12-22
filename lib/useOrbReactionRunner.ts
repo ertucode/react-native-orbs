@@ -5,11 +5,13 @@ import {
   OrbsState,
   OrbsStateInitialization,
   Position,
+  Side,
 } from "./OrbState";
 import { Animated } from "react-native";
 import { Callback, ExtractWithoutType } from "./typeUtils";
 import { Game } from "@/constants/Game";
 import { DoneCounter } from "./DoneCounter";
+import { logger } from "./logger";
 
 function runParallel(
   reactions: OrbReaction[],
@@ -103,20 +105,7 @@ function createOrb(
         ),
         scale: new Animated.Value(1),
       },
-      protons: reaction.orb.protons.map((proton) => {
-        const pr: UiProton = {
-          id: proton.id,
-          animated: {
-            x: new Animated.Value(
-              PhonePositionHelper.protonPosition(proton.pos.x),
-            ),
-            y: new Animated.Value(
-              PhonePositionHelper.protonPosition(proton.pos.y),
-            ),
-          },
-        };
-        return pr;
-      }),
+      protons: [],
     };
     return [...orbs, newOrb];
   });
@@ -135,18 +124,29 @@ function moveOrb(
       throw new Error(`Orb not found: ${reaction.id}`);
     }
 
+    logger.log(
+      "INFO",
+      "moveOrb",
+      JSON.stringify({ from: orb.pos, to: reaction.pos }),
+    );
     orb.pos = reaction.pos;
 
     const counter = new DoneCounter(done, 2);
 
     Animated.timing(orb.animated.x, {
-      toValue: reaction.pos.x,
+      toValue: PhonePositionHelper.orbPosition(
+        reaction.pos.x,
+        options.boardSize,
+      ),
       duration: Game.animation.orb,
       useNativeDriver: true,
     }).start(counter.done);
 
     Animated.timing(orb.animated.y, {
-      toValue: reaction.pos.y,
+      toValue: PhonePositionHelper.orbPosition(
+        reaction.pos.y,
+        options.boardSize,
+      ),
       duration: Game.animation.orb,
       useNativeDriver: true,
     }).start(counter.done);
@@ -161,9 +161,15 @@ function deleteOrb(
   done: Callback,
 ) {
   options.setOrbs((orbs) => {
+    logger.log(
+      "INFO",
+      "deleteOrb",
+      reaction.orb.id,
+      JSON.stringify(reaction.orb.pos),
+    );
     const idx = orbs.findIndex((o) => o.id === reaction.orb.id);
     if (idx === -1) {
-      throw new Error(`Orb not found: ${reaction.orb.id}`);
+      return orbs;
     }
     done();
     return [...orbs.slice(0, idx), ...orbs.slice(idx + 1)];
@@ -188,13 +194,13 @@ function moveProton(
 
     const counter = new DoneCounter(done, 2);
     Animated.timing(proton.animated.x, {
-      toValue: reaction.pos.x,
+      toValue: PhonePositionHelper.protonPosition(reaction.pos.x),
       duration: Game.animation.proton,
       useNativeDriver: true,
     }).start(counter.done);
 
     Animated.timing(proton.animated.y, {
-      toValue: reaction.pos.y,
+      toValue: PhonePositionHelper.protonPosition(reaction.pos.y),
       duration: Game.animation.proton,
       useNativeDriver: true,
     }).start(counter.done);
@@ -241,6 +247,8 @@ function createProton(
       ],
     };
 
+    logger.log("INFO", "updatedOrbProtonLength", updatedOrb.protons.length);
+
     done();
     return [...orbs.slice(0, orbIdx), updatedOrb, ...orbs.slice(orbIdx + 1)];
   });
@@ -257,12 +265,15 @@ export function useOrbReactionRunner(boardSize: number) {
 
   useEffect(() => {
     const reactions = orbsState.initialize(initialState);
-    setReactions(reactions);
+    setReactions([{ type: "parallel", reactions }]);
   }, [orbsState]);
 
   useEffect(() => {
     if (reactions.length === 0) return;
 
+    logger.log("INFO", "========================");
+    logger.log("INFO", JSON.stringify(reactions, null, 4));
+    logger.log("INFO", "========================");
     new SequenceRunner(reactions, { setOrbs, boardSize }).run(() => {
       setReactions([]);
     });
@@ -290,20 +301,40 @@ export type UiProton = {
   id: number;
 };
 
-const initialState: OrbsStateInitialization = {
-  orbs: [
-    {
-      side: 1,
-      pos: { x: 2, y: 2 },
-      count: 3,
-    },
-    {
-      side: 2,
-      pos: { x: 3, y: 1 },
-      count: 3,
-    },
-  ],
-};
+function fromString(str: string): OrbsStateInitialization {
+  const lines = str.split("\n").filter((l) => l.includes("|"));
+  const orbs: {
+    pos: Position;
+    count: number;
+    side: Side;
+  }[] = [];
+  for (let y = 0; y < lines.length; y++) {
+    const line = lines[y];
+    const lineParts = line.split("|");
+    for (let x = 0; x < lineParts.length; x++) {
+      const part = lineParts[x];
+      if (part === "  " || part === " " || part === "") continue;
+      const side = part[0] === "▲" ? 1 : 2;
+      const count = parseInt(part[1]);
+      orbs.push({
+        pos: { x: y, y: x },
+        count,
+        side,
+      });
+    }
+  }
+  return {
+    orbs,
+  };
+}
+
+const initialState: OrbsStateInitialization = fromString(`
+  |  |  |▼1|  
+  |  |  |▲1|▼1
+  |  |▲1|▼4|▲1
+  |  |  |▲1|  
+  |  |  |  |  
+`);
 
 const orbSize = Game.orb.size;
 const protonSize = orbSize / Game.orb.protonRatio;

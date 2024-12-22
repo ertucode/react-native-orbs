@@ -26,6 +26,7 @@ export default function TabLayout() {
           default: {},
         }),
       }}
+      initialRouteName="game"
     >
       <Tabs.Screen
         name="index"

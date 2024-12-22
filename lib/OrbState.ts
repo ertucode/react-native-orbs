@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 import { ExtractWithoutType } from "./typeUtils";
 
 export type Position = {
@@ -40,15 +41,40 @@ export class OrbsState {
   constructor(private boardSize: number) {}
 
   initialize(init: OrbsStateInitialization): OrbReaction[] {
-    return init.orbs.map((o) => this.createOrb(o)).flat();
+    const res = init.orbs.map((o) => this.createOrb(o)).flat();
+    this.logOrbs();
+    return res;
+  }
+
+  logOrbs() {
+    const createArr = () =>
+      Array(this.boardSize)
+        .fill([])
+        .map((_) => Array(this.boardSize).fill("  "));
+
+    const applySide = (arr: string[][]) => {
+      for (const orb of this.orbs) {
+        const prefix = orb.side === 1 ? "▲" : "▼";
+        arr[orb.pos.x][orb.pos.y] = `${prefix}${orb.count}`;
+      }
+      return arr.map((r) => r.join("|")).join("\n");
+    };
+
+    logger.log("ORBS", "");
+    logger.log("ORBS", "\n" + applySide(createArr()));
   }
 
   runCommand(command: OrbCommand): OrbReaction[] {
+    let res: OrbReaction[];
     switch (command.type) {
       case "create":
-        return this.createOrb(command);
+        res = this.createOrb(command);
+        this.logOrbs();
+        return res;
       case "increment":
-        return this.incrementOrb(command);
+        res = this.incrementOrb(command);
+        this.logOrbs();
+        return res;
       default:
         throw new Error(`Invalid command: ${command}`);
     }
@@ -138,13 +164,17 @@ export class OrbsState {
       throw new Error(`Orb not found: ${command.id}`);
     }
 
+    logger.log("INFO", "incrementOrb", orb.count);
     if (orb.count < 4) return this.simpleIncrementOrb(command);
 
     const reactions: OrbReaction[] = [];
+    logger.log("INFO", "deletingOrb", JSON.stringify(orb.pos));
     reactions.push(...this.deleteOrb(orb.id));
+    logger.log("INFO", "splitFromPos", JSON.stringify(orb.pos));
     reactions.push(...this.splitFromPos(orb.pos, orb.side));
 
     while (true) {
+      logger.log("INFO", "while (true)");
       if (this.isGameFinished()) {
         reactions.push({ type: "finishGame" });
         break;
@@ -176,28 +206,64 @@ export class OrbsState {
       throw new Error(`Orb not found: ${command.id}`);
     }
 
+    orb.count = command.to;
+
     return [
       {
         type: "parallel",
         reactions: positions.map((pos, idx) => {
-          const react: OrbReaction = {
-            type: "moveProton",
-            orbId: orb.id,
-            protonId: orb.protons[idx].id,
-            pos,
-          };
+          const react: OrbReaction = orb.protons[idx]
+            ? {
+                type: "moveProton",
+                orbId: orb.id,
+                protonId: orb.protons[idx].id,
+                pos,
+              }
+            : {
+                type: "sequence",
+                reactions: this.createAndMoveProton(orb, pos),
+              };
           return react;
         }),
       },
     ];
   }
 
+  private createAndMoveProton(orb: Orb, pos: Position): OrbReaction[] {
+    const id = IdGenerator.newId();
+    orb.protons.push({
+      id,
+      pos,
+    });
+    const react: OrbReaction = {
+      type: "sequence",
+      reactions: [
+        {
+          type: "createProton",
+          orbId: orb.id,
+          protonId: id,
+          pos: ProtonHelper.center,
+        },
+        {
+          type: "moveProton",
+          orbId: orb.id,
+          protonId: id,
+          pos,
+        },
+      ],
+    };
+    return [react];
+  }
+
   private deleteOrb(id: number): OrbReaction[] {
-    const orb = this.orbs.find((orb) => orb.id === id);
+    const orbIdx = this.orbs.findIndex((orb) => orb.id === id);
+    const orb = this.orbs[orbIdx];
 
     if (!orb) {
       throw new Error(`Orb not found: ${id}`);
     }
+
+    this.orbs.splice(orbIdx, 1);
     return [
       {
         type: "delete",
@@ -206,8 +272,8 @@ export class OrbsState {
     ];
   }
 
-  private splitFromPos(pos: Position, side: Side): OrbReaction[] {
-    const neighbors = CellHelper.getNeighbors(pos, this.boardSize);
+  private splitFromPos(fromPos: Position, side: Side): OrbReaction[] {
+    const neighbors = CellHelper.getNeighbors(fromPos, this.boardSize);
     const oneProtonPositions = ProtonHelper.positions(1);
 
     const newOrbs = neighbors.map((newPos) => {
@@ -230,42 +296,57 @@ export class OrbsState {
 
     this.orbs.push(...newOrbs);
 
+    logger.log(
+      "INFO",
+      "newOrbPoses",
+      JSON.stringify(newOrbs.map((o) => o.pos)),
+    );
+
     return [
       {
         type: "sequence",
         reactions: [
-          ...newOrbs.map((newOrb) => {
-            const react: OrbReaction = {
-              type: "create",
-              orb: {
-                ...newOrb,
-                pos,
-              },
-            };
-            return react;
-          }),
-          ...newOrbs
-            .map((newOrb) => {
-              return newOrb.protons.map((proton) => {
-                const react: OrbReaction = {
-                  type: "createProton",
-                  orbId: newOrb.id,
-                  pos: proton.pos,
-                  protonId: proton.id,
-                };
-                return react;
-              });
-            })
-            .flat(),
-          ...newOrbs.map((newOrb) => {
-            const react: OrbReaction = {
-              type: "move",
-              id: newOrb.id,
-              pos: newOrb.pos,
-            };
+          {
+            type: "parallel",
+            reactions: newOrbs.map((newOrb) => {
+              const react: OrbReaction = {
+                type: "create",
+                orb: {
+                  ...newOrb,
+                  pos: fromPos,
+                },
+              };
+              return react;
+            }),
+          },
+          {
+            type: "parallel",
+            reactions: newOrbs
+              .map((newOrb) => {
+                return newOrb.protons.map((proton) => {
+                  const react: OrbReaction = {
+                    type: "createProton",
+                    orbId: newOrb.id,
+                    pos: proton.pos,
+                    protonId: proton.id,
+                  };
+                  return react;
+                });
+              })
+              .flat(),
+          },
+          {
+            type: "parallel",
+            reactions: newOrbs.map((newOrb) => {
+              const react: OrbReaction = {
+                type: "move",
+                id: newOrb.id,
+                pos: newOrb.pos,
+              };
 
-            return react;
-          }),
+              return react;
+            }),
+          },
         ],
       },
     ];
@@ -294,14 +375,35 @@ export class OrbsState {
         .map((orb) => orb.count)
         .reduce((a, b) => a + b, 0);
       if (totalCount >= 4) {
+        logger.log("INFO:MERGE", "totalCount >= 4");
         reactions.push(this.mergeWhenMoreThan4(orbs));
         continue;
       }
 
+      logger.log("INFO:MERGE", "totalCount < 4");
       reactions.push(this.mergeWhenLessThan4(orbs, totalCount));
       continue;
     }
 
+    logger.log(
+      "INFO:MERGE",
+      "mergeReactions",
+      JSON.stringify(reactions.flat(), null, 4),
+    );
+    logger.log(
+      "INFO:MERGE",
+      "mergeReactions",
+      JSON.stringify(
+        Object.entries(orbsMap)
+          .filter(([_, value]) => value.length > 1)
+          .map(([key, value]) => [
+            key,
+            value.map((o) => ({ id: o.id, pos: o.pos })),
+          ]),
+        null,
+        4,
+      ),
+    );
     // TODO: Kötü olabilir
     return reactions.flat();
   }
@@ -368,6 +470,15 @@ export class OrbsState {
       )!;
     if (randomKiller.idx === -1) throw new Error("No random killer");
 
+    logger.log(
+      "INFO:MERGE",
+      JSON.stringify({
+        oldest: oldestOrb.id,
+        killer: randomKiller.orb.id,
+        all: orbs.map((o) => o.id),
+      }),
+    );
+
     const oldProtons = randomKiller.orb.protons;
     const positions = ProtonHelper.positions(count);
     const newOrb: Orb = {
@@ -385,13 +496,13 @@ export class OrbsState {
       side: randomKiller.orb.side,
     };
 
-    const deadOrbs: Orb[] = [];
-    for (const orb of orbs) {
-      const idx = this.orbs.indexOf(orb);
-      if (idx === -1) throw new Error("Orb not found");
-      if (idx === randomKiller.idx) continue;
-
-      deadOrbs.push(orb);
+    const deadOrbs: Orb[] = orbs.filter(
+      (o) => o.id !== oldestOrb.id && o.id !== randomKiller.orb.id,
+    );
+    const orbIdxs = this.orbs.map((o) => o.id);
+    for (const deadOrb of deadOrbs) {
+      const idx = orbIdxs.indexOf(deadOrb.id);
+      if (idx === -1) throw new Error("Orb not found: " + deadOrb.id);
       this.orbs.splice(idx, 1);
     }
 
