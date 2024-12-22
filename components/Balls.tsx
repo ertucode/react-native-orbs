@@ -1,9 +1,10 @@
 import { Game } from "@/constants/Game";
 import { useOrbReactionRunner } from "@/lib/useOrbReactionRunner";
 import { Animated, Pressable, StyleSheet, View } from "react-native";
+import { Text } from "react-native";
 
 export function Balls({ boardSize }: { boardSize: number }) {
-  const { orbs, runCommand } = useOrbReactionRunner(boardSize);
+  const { orbs, runCommand, restart } = useOrbReactionRunner(boardSize);
 
   function onOrbPress(idx: number) {
     const orb = orbs[idx];
@@ -55,6 +56,9 @@ export function Balls({ boardSize }: { boardSize: number }) {
           </Pressable>
         );
       })}
+      <Pressable style={styles.button} onPress={() => restart()}>
+        <Text style={styles.buttonText}>Restart</Text>
+      </Pressable>
     </View>
   );
 }
@@ -84,5 +88,20 @@ const styles = StyleSheet.create({
     position: "absolute",
     backgroundColor: "white",
     pointerEvents: "none",
+  },
+  button: {
+    width: 100,
+    height: 30,
+    backgroundColor: "red",
+    position: "absolute",
+    bottom: -200,
+    left: -50,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  buttonText: {
+    color: "white",
+    textAlign: "center",
+    fontWeight: "bold",
   },
 });

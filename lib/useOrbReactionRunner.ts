@@ -1,17 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  OrbCommand,
-  OrbReaction,
-  OrbsState,
-  OrbsStateInitialization,
-  Position,
-  Side,
-} from "./OrbState";
+import { OrbCommand, OrbReaction, OrbsState, Position } from "./OrbState";
 import { Animated } from "react-native";
 import { Callback, ExtractWithoutType } from "./typeUtils";
 import { Game } from "@/constants/Game";
 import { DoneCounter } from "./DoneCounter";
 import { logger } from "./logger";
+import { orbStateFromString } from "./orbStateInitialization";
 
 function runParallel(
   reactions: OrbReaction[],
@@ -57,9 +51,9 @@ function runReaction(
   done: Callback,
   options: RunReactionOptions,
 ) {
+  logger.log("INFO:APPLY", reaction.type);
   switch (reaction.type) {
     case "finishGame":
-      // TODO
       return done();
     case "parallel":
       return runParallel(reaction.reactions, options, done);
@@ -184,12 +178,14 @@ function moveProton(
   options.setOrbs((orbs) => {
     const orb = orbs.find((o) => o.id === reaction.orbId);
     if (!orb) {
-      throw new Error(`Orb not found: ${reaction.orbId}`);
+      done();
+      return orbs;
     }
 
     const proton = orb.protons.find((p) => p.id === reaction.protonId);
     if (!proton) {
-      throw new Error(`Proton not found: ${reaction.protonId}`);
+      done();
+      return orbs;
     }
 
     const counter = new DoneCounter(done, 2);
@@ -247,8 +243,7 @@ function createProton(
       ],
     };
 
-    logger.log("INFO", "updatedOrbProtonLength", updatedOrb.protons.length);
-
+    logger.log("INFO:APPLY:DONE", "createProton");
     done();
     return [...orbs.slice(0, orbIdx), updatedOrb, ...orbs.slice(orbIdx + 1)];
   });
@@ -258,13 +253,22 @@ export function useOrbReactionRunner(boardSize: number) {
   const [reactions, setReactions] = useState<OrbReaction[]>([]);
   const [orbs, setOrbs] = useState<UiOrb[]>([]);
   const disabled = reactions.length !== 0;
+  const [gameId, setGameId] = useState(0);
 
   const orbsState = useMemo(() => {
     return new OrbsState(boardSize);
-  }, [boardSize]);
+  }, [boardSize, gameId]);
 
   useEffect(() => {
-    const reactions = orbsState.initialize(initialState);
+    const reactions = orbsState.initialize(
+      orbStateFromString(`
+  |  |  |  |  
+  |  |  |▲1|  
+  |  |  |▼4|  
+  |  |  |  |  
+  |  |  |  |  
+`),
+    );
     setReactions([{ type: "parallel", reactions }]);
   }, [orbsState]);
 
@@ -275,6 +279,7 @@ export function useOrbReactionRunner(boardSize: number) {
     logger.log("INFO", JSON.stringify(reactions, null, 4));
     logger.log("INFO", "========================");
     new SequenceRunner(reactions, { setOrbs, boardSize }).run(() => {
+      logger.log("INFO:APPLY", "done");
       setReactions([]);
     });
   }, [reactions, setOrbs]);
@@ -285,6 +290,23 @@ export function useOrbReactionRunner(boardSize: number) {
       setReactions(orbsState.runCommand(command));
     },
     orbs,
+    restart() {
+      console.log(
+        "restart",
+        JSON.stringify(
+          {
+            disabled,
+            reactions,
+          },
+          null,
+          4,
+        ),
+      );
+      if (disabled) return;
+      setReactions([]);
+      setOrbs([]);
+      setGameId((g) => g + 1);
+    },
   };
 }
 
@@ -300,41 +322,6 @@ export type UiProton = {
   animated: { x: Animated.Value; y: Animated.Value };
   id: number;
 };
-
-function fromString(str: string): OrbsStateInitialization {
-  const lines = str.split("\n").filter((l) => l.includes("|"));
-  const orbs: {
-    pos: Position;
-    count: number;
-    side: Side;
-  }[] = [];
-  for (let y = 0; y < lines.length; y++) {
-    const line = lines[y];
-    const lineParts = line.split("|");
-    for (let x = 0; x < lineParts.length; x++) {
-      const part = lineParts[x];
-      if (part === "  " || part === " " || part === "") continue;
-      const side = part[0] === "▲" ? 1 : 2;
-      const count = parseInt(part[1]);
-      orbs.push({
-        pos: { x: y, y: x },
-        count,
-        side,
-      });
-    }
-  }
-  return {
-    orbs,
-  };
-}
-
-const initialState: OrbsStateInitialization = fromString(`
-  |  |  |▼1|  
-  |  |  |▲1|▼1
-  |  |▲1|▼4|▲1
-  |  |  |▲1|  
-  |  |  |  |  
-`);
 
 const orbSize = Game.orb.size;
 const protonSize = orbSize / Game.orb.protonRatio;

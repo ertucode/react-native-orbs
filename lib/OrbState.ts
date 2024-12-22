@@ -37,7 +37,7 @@ class IdGenerator {
 }
 
 export class OrbsState {
-  private orbs: Orb[] = [];
+  public orbs: Orb[] = [];
   constructor(private boardSize: number) {}
 
   initialize(init: OrbsStateInitialization): OrbReaction[] {
@@ -47,6 +47,11 @@ export class OrbsState {
   }
 
   logOrbs() {
+    logger.log("ORBS", "");
+    logger.log("ORBS", "\n" + this.getOrbsAsString());
+  }
+
+  getOrbsAsString(withAxis = false) {
     const createArr = () =>
       Array(this.boardSize)
         .fill([])
@@ -60,8 +65,26 @@ export class OrbsState {
       return arr.map((r) => r.join("|")).join("\n");
     };
 
-    logger.log("ORBS", "");
-    logger.log("ORBS", "\n" + applySide(createArr()));
+    const res = applySide(createArr());
+
+    if (withAxis) {
+      let splits = res.split("\n");
+      splits = splits.map((s, i) => `   ${i} ${s}`);
+      splits.unshift(
+        "      " +
+          Array(this.boardSize)
+            .fill("")
+            .map((_, i) => i.toString())
+            .join("| "),
+      );
+      splits.unshift("       Y         ");
+      splits[Math.floor(this.boardSize / 2) + 2] =
+        "X" + splits[Math.floor(this.boardSize / 2) + 2].substring(1);
+
+      return splits.join("\n");
+    }
+
+    return res;
   }
 
   runCommand(command: OrbCommand): OrbReaction[] {

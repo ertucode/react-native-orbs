@@ -1,4 +1,6 @@
-const activeKeys: string[] | undefined = ["MERGE", "ORBS"];
+import { areWeTestingWithJest } from "./jestHelper";
+
+const activeKeys: string[] | undefined = ["MERGE", "ORBS", "APPLY"];
 
 function overlaps(a: string[], b: string[]) {
   for (const aItem of a) {
@@ -9,6 +11,7 @@ function overlaps(a: string[], b: string[]) {
 
 export const logger = {
   log(key: Uppercase<string>, ...params: any[]) {
+    if (areWeTestingWithJest()) return;
     if (activeKeys !== undefined && !overlaps(key.split(":"), activeKeys))
       return;
     return console.log(`[${key}]: `, ...params);
