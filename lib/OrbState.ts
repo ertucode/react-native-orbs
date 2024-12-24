@@ -40,7 +40,16 @@ export class OrbsState {
   public orbs: Orb[] = [];
   constructor(private boardSize: number) {}
 
+  private static cacheMap: Record<number, OrbsState> = {};
+  static createCached(boardSize: number) {
+    if (OrbsState.cacheMap[boardSize]) return OrbsState.cacheMap[boardSize];
+    const res = new OrbsState(boardSize);
+    OrbsState.cacheMap[boardSize] = res;
+    return res;
+  }
+
   initialize(init: OrbsStateInitialization): OrbReaction[] {
+    this.orbs = [];
     const res = init.orbs.map((o) => this.createOrb(o)).flat();
     this.logOrbs();
     return res;
@@ -101,7 +110,7 @@ export class OrbsState {
         this.logOrbs();
         return res;
       default:
-        throw new Error(`Invalid command: ${command}`);
+        throw new ErrorWithOrbs(`Invalid command: ${command}`, this);
     }
   }
 
@@ -121,6 +130,7 @@ export class OrbsState {
         };
       }),
     };
+    console.log("initializing", newOrb);
     this.orbs.push(newOrb);
     return [
       {
@@ -192,20 +202,22 @@ export class OrbsState {
   ): OrbReaction[] {
     const orb = this.orbs.find((orb) => orb.id === command.id);
     if (!orb) {
-      throw new Error(`Orb not found: ${command.id}`);
+      throw new ErrorWithOrbs(`Orb not found: ${command.id}`, this);
     }
 
     logger.log("INFO", "incrementOrb", orb.count);
     if (orb.count < 3) return this.simpleIncrementOrb(command);
 
     const reactions: OrbReaction[] = [];
-    reactions.push(...this.simpleIncrementOrb(command));
+    // reactions.push(...this.simpleIncrementOrb(command));
     logger.log("INFO", "deletingOrb", JSON.stringify(orb.pos));
     reactions.push(...this.deleteOrb(orb.id));
     logger.log("INFO", "splitFromPos", JSON.stringify(orb.pos));
     reactions.push(...this.splitFromPos(orb.pos));
 
+    console.log("before while(true)");
     while (true) {
+      console.log("while (true)");
       logger.log("INFO", "while (true)");
       if (this.isGameFinished()) {
         reactions.push({
@@ -215,6 +227,10 @@ export class OrbsState {
         break;
       }
 
+      console.log(
+        "beforeMergeReactions",
+        this.orbs.map((o) => o.id),
+      );
       const mergeReactions = this.checkMerges();
       logger.log(
         "ORBS",
@@ -243,7 +259,7 @@ export class OrbsState {
     const orb = this.orbs.find((orb) => orb.id === command.id);
 
     if (!orb) {
-      throw new Error(`Orb not found: ${command.id}`);
+      throw new ErrorWithOrbs(`Orb not found: ${command.id}`, this);
     }
 
     orb.count = command.to;
@@ -306,7 +322,7 @@ export class OrbsState {
     const orb = this.orbs[orbIdx];
 
     if (!orb) {
-      throw new Error(`Orb not found: ${id}`);
+      throw new ErrorWithOrbs(`Orb not found: ${id}`, this);
     }
 
     this.orbs.splice(orbIdx, 1);
@@ -410,6 +426,7 @@ export class OrbsState {
    * Check if there are any overlapping orbs
    * */
   private checkMerges(): OrbReaction[] {
+    console.log("checkingMErgeslakjsd;lfakjsdl;fkj");
     const orbsMap: Record<string, Orb[]> = {};
 
     for (const orb of this.orbs) {
@@ -430,6 +447,7 @@ export class OrbsState {
         .reduce((a, b) => a + b, 0);
       if (totalCount >= 4) {
         logger.log("INFO:MERGE", "totalCount >= 4");
+        console.log("here;laksdjf;laskjdf;laksjdf;lajksdl;fkj");
         reactions.push(this.mergeWhenMoreThan4(orbs));
         continue;
       }
@@ -463,15 +481,13 @@ export class OrbsState {
   }
 
   private mergeWhenMoreThan4(orbs: Orb[]): OrbReaction[] {
-    const splitReactions = this.splitFromPos(orbs[0].pos);
     return [
       {
         id: IdGenerator.newId(),
         type: "parallel",
         reactions: [
           ...orbs.map((orb) => {
-            // TODO: Kötü olabilir
-            this.orbs.splice(orbs.indexOf(orb), 1);
+            this.orbs.splice(this.orbs.indexOf(orb), 1);
             const react: OrbReaction = {
               id: IdGenerator.newId(),
               type: "delete",
@@ -479,7 +495,7 @@ export class OrbsState {
             };
             return react;
           }),
-          ...splitReactions,
+          ...this.splitFromPos(orbs[0].pos),
         ],
       },
     ];
@@ -504,7 +520,7 @@ export class OrbsState {
 
   private mergeWhenLessThan4(orbs: Orb[], count: number): OrbReaction[] {
     const oldestOrb = this.oldestOrb(orbs);
-    if (!oldestOrb) throw new Error("No oldest orb");
+    if (!oldestOrb) throw new ErrorWithOrbs("No oldest orb", this);
 
     const randomKiller = orbs
       .filter((o) => o !== oldestOrb)
@@ -521,7 +537,8 @@ export class OrbsState {
         },
         undefined as { orb: Orb; idx: number } | undefined,
       )!;
-    if (randomKiller.idx === -1) throw new Error("No random killer");
+    if (randomKiller.idx === -1)
+      throw new ErrorWithOrbs("No random killer", this);
 
     logger.log(
       "INFO:MERGE",
@@ -542,7 +559,8 @@ export class OrbsState {
     const orbIdxs = this.orbs.map((o) => o.id);
     for (const deadOrb of deadOrbs) {
       const idx = orbIdxs.indexOf(deadOrb.id);
-      if (idx === -1) throw new Error("Orb not found: " + deadOrb.id);
+      if (idx === -1)
+        throw new ErrorWithOrbs("Orb not found: " + deadOrb.id, this);
       this.orbs.splice(idx, 1);
     }
 
@@ -700,5 +718,12 @@ class CellHelper {
     }
 
     return neighbors;
+  }
+}
+
+class ErrorWithOrbs extends Error {
+  constructor(message: string, orbState: OrbsState) {
+    super(message);
+    console.error(orbState.getOrbsAsString(true));
   }
 }

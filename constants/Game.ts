@@ -15,10 +15,10 @@ export const Game = {
     orb: 600,
   },
   initialOrbs: `
-  |  |  |  |  
+▲3|  |  |  |  
   |  |  |▲3|  
   |  |  |▼3|  
-  |  |▲3|  |  
+  |  |  |  |  
   |  |▼3|  |
 `,
 } as const;

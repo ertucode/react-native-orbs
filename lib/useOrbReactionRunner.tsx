@@ -44,7 +44,7 @@ class SequenceRunner {
 type RunReactionOptions = {
   setOrbs: SetOrbs;
   boardSize: number;
-  throwError: (reaction: OrbReaction | "none", err: string) => never;
+  throwError: (reaction: OrbReaction | "none", err: string) => void;
 };
 
 function runReaction(
@@ -104,9 +104,9 @@ function createOrb(
       },
       protons: [],
     };
+    done();
     return [...orbs, newOrb];
   });
-  done();
 }
 
 function moveOrb(
@@ -118,7 +118,11 @@ function moveOrb(
     const orb = orbs.find((o) => o.id === reaction.orbId);
 
     if (!orb) {
-      options.throwError(reaction, `Orb not found: ${reaction.id}`);
+      options.throwError(
+        reaction,
+        `Orb not found: ${reaction.orbId}, orbs: [${orbs.map((o) => o.id).join(", ")}]`,
+      );
+      return orbs;
     }
 
     logger.log(
@@ -165,6 +169,12 @@ function deleteOrb(
       JSON.stringify(reaction.orb.pos),
     );
     const idx = orbs.findIndex((o) => o.id === reaction.orb.id);
+    /* console.log("deleteOrb", {
+      idx,
+      id: reaction.orb.id,
+      start: JSON.stringify(orbs.map((o) => o.id)),
+      end: [...orbs.slice(0, idx), ...orbs.slice(idx + 1)].map((o) => o.id),
+    }); */
     if (idx === -1) {
       return orbs;
     }
@@ -217,6 +227,7 @@ function createProton(
     const orbIdx = orbs.findIndex((o) => o.id === reaction.orbId);
     if (orbIdx === -1) {
       options.throwError(reaction, `Orb not found: ${reaction.orbId}`);
+      return orbs;
     }
 
     const orb = orbs[orbIdx];
@@ -238,6 +249,7 @@ function createProton(
         reaction,
         `Proton already exists: ${reaction.protonId}`,
       );
+      return orbs;
     }
 
     const updatedOrb: UiOrb = {
@@ -290,10 +302,11 @@ export const OrbReactionRunnerContextProvider = ({
   const [currentSide, setCurrentSide] = useState<Side>(1);
 
   const orbsState = useMemo(() => {
-    return new OrbsState(boardSize);
+    return OrbsState.createCached(boardSize);
   }, [boardSize, gameId]);
 
   useEffect(() => {
+    restart();
     const reactions = orbsState.initialize(
       orbStateFromString(Game.initialOrbs),
     );
@@ -310,11 +323,24 @@ export const OrbReactionRunnerContextProvider = ({
       setOrbs,
       boardSize,
       throwError: (reaction, err) => {
-        logger.log("ORBS:ERROR", reaction, orbsState.getOrbsAsString(true));
+        logger.log(
+          "ORBS:ERROR",
+          reaction,
+          orbsState.getOrbsAsString(true),
+          `orbs: [${orbs.map((o) => o.id).join(", ")}] [${orbsState.orbs.map((o) => o.id).join(", ")}]`,
+        );
+        // console.error(err);
+
         throw new Error(err);
       },
     }).run(() => {
       logger.log("INFO:APPLY", "ran reactions");
+      setOrbs((orbs) => {
+        console.log(
+          `orbs: [${orbs.map((o) => o.id).join(", ")}] [${orbsState.orbs.map((o) => o.id).join(", ")}]`,
+        );
+        return orbs;
+      });
       setReactions([]);
     });
   }, [reactions, setOrbs]);
@@ -323,27 +349,17 @@ export const OrbReactionRunnerContextProvider = ({
     if (disabled) return;
     setReactions(orbsState.runCommand(command, currentSide));
   }
+  function restart() {
+    if (disabled) return;
+    setReactions([]);
+    setOrbs([]);
+    setGameId((g) => g + 1);
+    setCurrentSide(1);
+  }
   const value: IOrbReactionRunnerContext = {
     runCommand,
     orbs,
-    restart() {
-      console.log(
-        "restart",
-        JSON.stringify(
-          {
-            disabled,
-            reactions,
-          },
-          null,
-          4,
-        ),
-      );
-      if (disabled) return;
-      setReactions([]);
-      setOrbs([]);
-      setGameId((g) => g + 1);
-      setCurrentSide(1);
-    },
+    restart,
     boardSize,
     onBoardPress(i, j) {
       if (disabled) return;
