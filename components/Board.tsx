@@ -1,7 +1,10 @@
 import { Game } from "@/constants/Game";
-import { StyleSheet, View } from "react-native";
+import { useOrbReactionRunnerContext } from "@/lib/useOrbReactionRunner";
+import { Pressable, StyleSheet, View } from "react-native";
 
-export function Board({ size }: { size: number }) {
+export function Board() {
+  const { boardSize: size, onBoardPress } = useOrbReactionRunnerContext();
+
   return (
     <View
       style={[
@@ -15,7 +18,11 @@ export function Board({ size }: { size: number }) {
       {Array.from({ length: size }).map((_, i) => (
         <View key={i} style={[styles.row]}>
           {Array.from({ length: size }).map((_, j) => (
-            <View key={j} style={[styles.cell]} />
+            <Pressable
+              onPress={() => onBoardPress(i, j)}
+              style={[styles.cell]}
+              key={j}
+            ></Pressable>
           ))}
         </View>
       ))}

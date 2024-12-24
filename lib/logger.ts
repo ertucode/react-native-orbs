@@ -1,6 +1,11 @@
 import { areWeTestingWithJest } from "./jestHelper";
 
-const activeKeys: string[] | undefined = ["MERGE", "ORBS", "APPLY"];
+const activeKeys: string[] | undefined = [
+  "INTERACTION",
+  "ORBS",
+  "APPLY",
+  "REACTIONS",
+];
 
 function overlaps(a: string[], b: string[]) {
   for (const aItem of a) {

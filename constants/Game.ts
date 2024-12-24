@@ -12,6 +12,13 @@ export const Game = {
   },
   animation: {
     proton: 300,
-    orb: 300,
+    orb: 600,
   },
+  initialOrbs: `
+  |  |  |  |  
+  |  |  |▲3|  
+  |  |  |▼3|  
+  |  |▲3|  |  
+  |  |▼3|  |
+`,
 } as const;

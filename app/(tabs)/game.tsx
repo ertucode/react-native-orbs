@@ -1,14 +1,17 @@
 import { Balls } from "@/components/Balls";
 import { Board } from "@/components/Board";
+import { OrbReactionRunnerContextProvider } from "@/lib/useOrbReactionRunner";
 import React from "react";
 import { View, StyleSheet } from "react-native";
 
 const App = () => {
   const boardSize = 5;
   return (
-    <View key={2} style={styles.container}>
-      <Board size={boardSize} />
-      <Balls boardSize={boardSize} />
+    <View key={1} style={styles.container}>
+      <OrbReactionRunnerContextProvider boardSize={boardSize}>
+        <Board />
+        <Balls />
+      </OrbReactionRunnerContextProvider>
     </View>
   );
 };
@@ -16,7 +19,7 @@ const App = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "black",
     justifyContent: "center",
     alignItems: "center",
   },

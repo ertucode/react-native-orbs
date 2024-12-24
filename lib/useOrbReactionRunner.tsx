@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { OrbCommand, OrbReaction, OrbsState, Position } from "./OrbState";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { OrbCommand, OrbReaction, OrbsState, Position, Side } from "./OrbState";
 import { Animated } from "react-native";
-import { Callback, ExtractWithoutType } from "./typeUtils";
+import { Callback, ExtractWithoutType, ExtractWithType } from "./typeUtils";
 import { Game } from "@/constants/Game";
 import { DoneCounter } from "./DoneCounter";
 import { logger } from "./logger";
@@ -44,6 +44,7 @@ class SequenceRunner {
 type RunReactionOptions = {
   setOrbs: SetOrbs;
   boardSize: number;
+  throwError: (reaction: OrbReaction | "none", err: string) => never;
 };
 
 function runReaction(
@@ -69,8 +70,10 @@ function runReaction(
       return moveProton(reaction, options, done);
     case "createProton":
       return createProton(reaction, options, done);
+    case "sleep":
+      return sleep(reaction, done);
     default:
-      throw new Error(`Invalid reaction: ${reaction}`);
+      options.throwError("none", `Invalid reaction: ${reaction}`);
   }
 }
 
@@ -107,15 +110,15 @@ function createOrb(
 }
 
 function moveOrb(
-  reaction: ExtractWithoutType<OrbReaction, "move">,
+  reaction: ExtractWithType<OrbReaction, "move">,
   options: RunReactionOptions,
   done: Callback,
 ) {
   options.setOrbs((orbs) => {
-    const orb = orbs.find((o) => o.id === reaction.id);
+    const orb = orbs.find((o) => o.id === reaction.orbId);
 
     if (!orb) {
-      throw new Error(`Orb not found: ${reaction.id}`);
+      options.throwError(reaction, `Orb not found: ${reaction.id}`);
     }
 
     logger.log(
@@ -206,14 +209,14 @@ function moveProton(
 }
 
 function createProton(
-  reaction: ExtractWithoutType<OrbReaction, "createProton">,
+  reaction: ExtractWithType<OrbReaction, "createProton">,
   options: RunReactionOptions,
   done: Callback,
 ) {
   options.setOrbs((orbs) => {
     const orbIdx = orbs.findIndex((o) => o.id === reaction.orbId);
     if (orbIdx === -1) {
-      throw new Error(`Orb not found: ${reaction.orbId}`);
+      options.throwError(reaction, `Orb not found: ${reaction.orbId}`);
     }
 
     const orb = orbs[orbIdx];
@@ -231,7 +234,10 @@ function createProton(
     };
     const protonIdx = orb.protons.findIndex((p) => p.id === reaction.protonId);
     if (protonIdx !== -1) {
-      throw new Error(`Proton already exists: ${reaction.protonId}`);
+      options.throwError(
+        reaction,
+        `Proton already exists: ${reaction.protonId}`,
+      );
     }
 
     const updatedOrb: UiOrb = {
@@ -249,11 +255,39 @@ function createProton(
   });
 }
 
-export function useOrbReactionRunner(boardSize: number) {
+function sleep(
+  reaction: ExtractWithoutType<OrbReaction, "sleep">,
+  done: Callback,
+) {
+  setTimeout(done, reaction.ms);
+}
+
+export function useOrbReactionRunnerContext() {
+  return useContext(OrbReactionRunnerContext);
+}
+
+export type IOrbReactionRunnerContext = {
+  runCommand(command: OrbCommand): void;
+  orbs: UiOrb[];
+  restart(): void;
+  boardSize: number;
+  onBoardPress(i: number, j: number): void;
+};
+export const OrbReactionRunnerContext =
+  createContext<IOrbReactionRunnerContext>(undefined as any);
+
+export const OrbReactionRunnerContextProvider = ({
+  boardSize,
+  children,
+}: {
+  boardSize: number;
+  children: React.ReactNode;
+}) => {
   const [reactions, setReactions] = useState<OrbReaction[]>([]);
   const [orbs, setOrbs] = useState<UiOrb[]>([]);
   const disabled = reactions.length !== 0;
   const [gameId, setGameId] = useState(0);
+  const [currentSide, setCurrentSide] = useState<Side>(1);
 
   const orbsState = useMemo(() => {
     return new OrbsState(boardSize);
@@ -261,34 +295,36 @@ export function useOrbReactionRunner(boardSize: number) {
 
   useEffect(() => {
     const reactions = orbsState.initialize(
-      orbStateFromString(`
-  |  |  |  |  
-  |  |  |▲1|  
-  |  |  |▼4|  
-  |  |  |  |  
-  |  |  |  |  
-`),
+      orbStateFromString(Game.initialOrbs),
     );
-    setReactions([{ type: "parallel", reactions }]);
+    setReactions([{ id: -1, type: "parallel", reactions }]);
   }, [orbsState]);
 
   useEffect(() => {
     if (reactions.length === 0) return;
 
     logger.log("INFO", "========================");
-    logger.log("INFO", JSON.stringify(reactions, null, 4));
+    logger.log("INFO:REACTIONS", reactions);
     logger.log("INFO", "========================");
-    new SequenceRunner(reactions, { setOrbs, boardSize }).run(() => {
-      logger.log("INFO:APPLY", "done");
+    new SequenceRunner(reactions, {
+      setOrbs,
+      boardSize,
+      throwError: (reaction, err) => {
+        logger.log("ORBS:ERROR", reaction, orbsState.getOrbsAsString(true));
+        throw new Error(err);
+      },
+    }).run(() => {
+      logger.log("INFO:APPLY", "ran reactions");
       setReactions([]);
     });
   }, [reactions, setOrbs]);
 
-  return {
-    runCommand(command: OrbCommand) {
-      if (disabled) return;
-      setReactions(orbsState.runCommand(command));
-    },
+  function runCommand(command: OrbCommand) {
+    if (disabled) return;
+    setReactions(orbsState.runCommand(command, currentSide));
+  }
+  const value: IOrbReactionRunnerContext = {
+    runCommand,
     orbs,
     restart() {
       console.log(
@@ -306,9 +342,43 @@ export function useOrbReactionRunner(boardSize: number) {
       setReactions([]);
       setOrbs([]);
       setGameId((g) => g + 1);
+      setCurrentSide(1);
+    },
+    boardSize,
+    onBoardPress(i, j) {
+      if (disabled) return;
+
+      logger.log("INFO:INTERACTION", "onBoardPress", {
+        x: i,
+        y: j,
+        side: currentSide,
+      });
+      const orb = orbs.find((o) => o.pos.x === i && o.pos.y === j);
+
+      if (orb) {
+        if (orb.side !== currentSide) return;
+        runCommand({
+          type: "increment",
+          id: orb.id,
+          to: orb.protons.length + 1,
+        });
+      } else {
+        runCommand({
+          type: "create",
+          pos: { x: i, y: j },
+          side: currentSide,
+          count: 1,
+        });
+      }
+      setCurrentSide((s) => (s === 1 ? 2 : 1));
     },
   };
-}
+  return (
+    <OrbReactionRunnerContext.Provider value={value}>
+      {children}
+    </OrbReactionRunnerContext.Provider>
+  );
+};
 
 export type UiOrb = {
   pos: Position;

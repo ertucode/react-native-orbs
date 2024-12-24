@@ -29,6 +29,15 @@ export default function TabLayout() {
       initialRouteName="game"
     >
       <Tabs.Screen
+        name="game"
+        options={{
+          title: "Game",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="balloon.fill" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="index"
         options={{
           title: "Home",
@@ -43,15 +52,6 @@ export default function TabLayout() {
           title: "Explore",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={28} name="paperplane.fill" color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="game"
-        options={{
-          title: "Game",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="balloon.fill" color={color} />
           ),
         }}
       />

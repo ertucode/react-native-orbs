@@ -9,9 +9,9 @@ describe("OrbState", () => {
       orbStateFromString(`
   |  |  |  |  
   |  |  |▲1|  
-  |  |  |▼4|  
+  |▼2|▼2|▼4|  
   |  |  |  |  
-  |  |  |  |
+  |  |▼2|  |
 `),
     );
 
