@@ -302,7 +302,8 @@ export const OrbReactionRunnerContextProvider = ({
   const [currentSide, setCurrentSide] = useState<Side>(1);
 
   const orbsState = useMemo(() => {
-    return OrbsState.createCached(boardSize);
+    // BROKEN???
+    return OrbsState.createCached(boardSize, gameId);
   }, [boardSize, gameId]);
 
   useEffect(() => {

@@ -40,11 +40,12 @@ export class OrbsState {
   public orbs: Orb[] = [];
   constructor(private boardSize: number) {}
 
-  private static cacheMap: Record<number, OrbsState> = {};
-  static createCached(boardSize: number) {
-    if (OrbsState.cacheMap[boardSize]) return OrbsState.cacheMap[boardSize];
+  private static cacheMap: Record<string, OrbsState> = {};
+  static createCached(boardSize: number, gameId: number) {
+    const key = `${boardSize}-${gameId}`;
+    if (OrbsState.cacheMap[key]) return OrbsState.cacheMap[key];
     const res = new OrbsState(boardSize);
-    OrbsState.cacheMap[boardSize] = res;
+    OrbsState.cacheMap[key] = res;
     return res;
   }
 
@@ -215,12 +216,17 @@ export class OrbsState {
     logger.log("INFO", "splitFromPos", JSON.stringify(orb.pos));
     reactions.push(...this.splitFromPos(orb.pos));
 
-    console.log("before while(true)");
+    const whileReactions: OrbReaction[] = [];
+    reactions.push({
+      id: IdGenerator.newId(),
+      type: "sequence",
+      reactions: whileReactions,
+    });
     while (true) {
       console.log("while (true)");
       logger.log("INFO", "while (true)");
       if (this.isGameFinished()) {
-        reactions.push({
+        whileReactions.push({
           id: IdGenerator.newId(),
           type: "finishGame",
         });
@@ -238,10 +244,21 @@ export class OrbsState {
       );
       if (mergeReactions.length === 0) break;
 
-      reactions.push({
+      whileReactions.push({
         id: IdGenerator.newId(),
-        type: "parallel",
-        reactions: mergeReactions,
+        type: "sequence",
+        reactions: [
+          {
+            id: IdGenerator.newId(),
+            type: "parallel",
+            reactions: mergeReactions,
+          },
+          {
+            type: "sleep",
+            id: IdGenerator.newId(),
+            ms: 100,
+          },
+        ],
       });
     }
 

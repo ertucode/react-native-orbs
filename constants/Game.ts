@@ -1,3 +1,19 @@
+const initialOrbs = {
+  heavy: `
+▲3|▲3|▲3|▲3|▲3
+▲3|▲3|▲3|▲3|▲3
+▲3|▲3|▲3|▼3|▲3
+▼3|▼3|▼3|▼3|▼3
+▼3|▼3|▼3|▼3|
+`,
+  thing: `
+▲3|  |  |  |  
+  |  |  |▲3|  
+  |  |  |▼3|  
+  |  |  |  |  
+  |  |▼3|  |
+`,
+};
 export const Game = {
   board: {
     gap: 10,
@@ -14,11 +30,5 @@ export const Game = {
     proton: 300,
     orb: 600,
   },
-  initialOrbs: `
-▲3|  |  |  |  
-  |  |  |▲3|  
-  |  |  |▼3|  
-  |  |  |  |  
-  |  |▼3|  |
-`,
+  initialOrbs: initialOrbs.heavy,
 } as const;

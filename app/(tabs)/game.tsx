@@ -7,7 +7,7 @@ import { View, StyleSheet } from "react-native";
 const App = () => {
   const boardSize = 5;
   return (
-    <View key={1} style={styles.container}>
+    <View key={2} style={styles.container}>
       <OrbReactionRunnerContextProvider boardSize={boardSize}>
         <Board />
         <Balls />

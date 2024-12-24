@@ -5,6 +5,7 @@ import { Text } from "react-native";
 
 export function Balls() {
   const { orbs, restart } = useOrbReactionRunnerContext();
+  console.warn("BALLS");
 
   return (
     <View style={styles.container}>

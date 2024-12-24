@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 
 export function Board() {
   const { boardSize: size, onBoardPress } = useOrbReactionRunnerContext();
+  console.warn("BOARD");
 
   return (
     <View
